@@ -53,7 +53,7 @@ async function handleLoginCommand() {
     code_challenge: challenge
   });
 
-  console.log('🎧 Opening browser to authenticate with Spotify...');
+  console.log('Opening browser to authenticate with Spotify...');
   await open(authURL);
 
   const app = express();
@@ -80,9 +80,6 @@ async function handleLoginCommand() {
       const { access_token, refresh_token, expires_in } = tokenRes.data;
 
       console.log('\n✅ Logged in successfully!');
-      console.log('🔐 Access Token:', access_token);
-      console.log('🔁 Refresh Token:', refresh_token);
-      console.log('⏳ Expires In:', expires_in, 'seconds');
 
       res.send('✅ Login complete! You may close this window.');
 
@@ -91,10 +88,32 @@ async function handleLoginCommand() {
       }, 1000);
 
     } catch (err) {
-      console.error('❌ Token exchange failed:', err.response?.data || err.message);
+      console.error('Token exchange failed:', err.response?.data || err.message);
       res.status(500).send('Failed to retrieve tokens.');
     }
   });
+
+// =============================
+// USER'S TOP SONGS
+// =============================
+
+async function handleUserTopSongs(
+  limit,
+  time_range,
+  ) {
+    if (time_range === "short") {
+      const time = "short_term";
+    } else if (time_range === "medium") {
+      const time = "medium_term";
+    } else if (time_range === "long") {
+      const time = "long_term";
+    } else {
+      console.log("Invalid time input!")
+    }
+    data = axios.get(`https://api.spotify.com/v1/me/top/tracks?
+    time_range=${time}&limit=${limit}`, );
+}
+
 
   app.listen(3000, () => {
     console.log('📡 Waiting on http://localhost:3000...');
