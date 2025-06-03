@@ -6,10 +6,18 @@ import express from 'express';
 import axios from 'axios';
 import crypto from 'crypto';
 import open from 'open';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 // ==============================
 // CONFIGURATION
 // ==============================
+const tokens = {
+  "access" : null,
+  "refresh" : null
+}
+const TOKEN_FILE = path.join(os.homedir(), '.spotify-cli', 'tokens.json');
 const CLIENT_ID = '0ca2b0ba92fb4fe9afab0db4e07e071f'; 
 const REDIRECT_URI = 'http://127.0.0.1:3000/callback';
 const SCOPES = [
@@ -36,6 +44,25 @@ function generateCodeChallenge(codeVerifier) {
     .replace(/\//g, '_')
     .replace(/=+$/, '');
 }
+// ===============================
+//  TOKEN LOGGING LOGIC
+// ===============================
+function saveTokensToFile(tokens) {
+  fs.mkdirSync(path.dirname(TOKEN_FILE), { recursive: true });
+  fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2));
+}
+
+function loadTokensFromFile() {
+  if (!fs.existsSync(TOKEN_FILE)) {
+    console.error('No saved tokens found. Please run: spotify-tool-cli login');
+    process.exit(1);
+  }
+  const raw = fs.readFileSync(TOKEN_FILE);
+  return JSON.parse(raw);
+}
+
+
+
 
 // ==============================
 // LOGIN COMMAND
@@ -79,6 +106,11 @@ async function handleLoginCommand() {
 
       const { access_token, refresh_token, expires_in } = tokenRes.data;
 
+      tokens.access = access_token;
+      tokens.refresh = refresh_token;
+
+      saveTokensToFile(tokens);
+
       console.log('\n✅ Logged in successfully!');
 
       res.send('✅ Login complete! You may close this window.');
@@ -93,31 +125,50 @@ async function handleLoginCommand() {
     }
   });
 
+  app.listen(3000, () => {
+    console.log('Waiting on http://localhost:3000...');
+  });
+}
+
 // =============================
 // USER'S TOP SONGS
 // =============================
 
-async function handleUserTopSongs(
-  limit,
-  time_range,
-  ) {
-    if (time_range === "short") {
-      const time = "short_term";
-    } else if (time_range === "medium") {
-      const time = "medium_term";
-    } else if (time_range === "long") {
-      const time = "long_term";
-    } else {
-      console.log("Invalid time input!")
-    }
-    data = axios.get(`https://api.spotify.com/v1/me/top/tracks?
-    time_range=${time}&limit=${limit}`, );
-}
+async function handleUserTopSongs(limit, time_range) {
+  const tokens = loadTokensFromFile();
+  const access = tokens.access;
+  console.log(access);
 
+  let time;
+  if (time_range === "short") {
+    time = "short_term";
+  } else if (time_range === "medium") {
+    time = "medium_term";
+  } else if (time_range === "long") {
+    time = "long_term";
+  } else {
+    console.log("Invalid time input! Use short, medium, or long.");
+    return;
+  }
 
-  app.listen(3000, () => {
-    console.log('📡 Waiting on http://localhost:3000...');
-  });
+  try {
+    const response = await axios.get(
+      `https://api.spotify.com/v1/me/top/tracks?time_range=${time}&limit=${limit}`,
+      {
+        headers: {
+          Authorization: `Bearer ${access}`
+        }
+      }
+    );
+
+    console.log("🎵 Top Tracks:");
+    response.data.items.forEach((track, index) => {
+      console.log(`${index + 1}. ${track.name} — ${track.artists.map(a => a.name).join(", ")}`);
+    });
+
+  } catch (err) {
+    console.error("Error fetching top tracks:", err.response?.data || err.message);
+  }
 }
 
 // ==============================
@@ -125,6 +176,27 @@ async function handleUserTopSongs(
 // ==============================
 yargs(hideBin(process.argv))
   .command('login', 'Authenticate with Spotify via PKCE', {}, handleLoginCommand)
+  .command(
+    'top-tracks',
+    'View your top Spotify tracks',
+    yargs => {
+      return yargs
+        .option('limit', {
+          alias: 'l',
+          type: 'number',
+          default: 10,
+          describe: 'Number of tracks to show (1–50)'
+        })
+        .option('range', {
+          alias: 'r',
+          type: 'string',
+          choices: ['short', 'medium', 'long'],
+          default: 'medium',
+          describe: 'Time range: short (4 weeks), medium (6 months), or long (years)'
+        });
+    },
+    argv => handleUserTopSongs(argv.limit, argv.range)
+  )
   .demandCommand(1, 'Please provide a valid command')
   .strict()
   .help()
