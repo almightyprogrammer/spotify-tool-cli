@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
+// import yargs from 'yargs';
+// import { hideBin } from 'yargs/helpers';
 import express from 'express';
 import axios from 'axios';
 import crypto from 'crypto';
@@ -9,6 +9,9 @@ import open from 'open';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import chalk from "chalk";
+import inquirer from "inquirer";
+import boxen from "boxen";
 
 // ==============================
 // CONFIGURATION
@@ -54,15 +57,18 @@ function saveTokensToFile(tokens) {
 
 function loadTokensFromFile() {
   if (!fs.existsSync(TOKEN_FILE)) {
-    console.error('No saved tokens found. Please run: spotify-tool-cli login');
+    console.error(chalk.red('No saved tokens found. Please run: spotify-tool-cli login'));
     process.exit(1);
   }
   const raw = fs.readFileSync(TOKEN_FILE);
   return JSON.parse(raw);
 }
+// ==============================
+//  WELCOME PAGE COMMAND
+// ==============================
+async function handleWelcomePage() {
 
-
-
+}
 
 // ==============================
 // LOGIN COMMAND
@@ -80,53 +86,55 @@ async function handleLoginCommand() {
     code_challenge: challenge
   });
 
-  console.log('Opening browser to authenticate with Spotify...');
+  console.log(chalk.yellow('Opening browser to authenticate with Spotify...'));
   await open(authURL);
 
-  const app = express();
+  return new Promise((resolve, reject) => {
+    const app = express();
+    const server = app.listen(3000, () => {
+      console.log(chalk.yellow('Waiting on http://localhost:3000...'));
+    });
 
-  app.get('/callback', async (req, res) => {
-    const code = req.query.code;
-    if (!code) {
-      res.status(400).send('Missing authorization code.');
-      return;
-    }
+    app.get('/callback', async (req, res) => {
+      const code = req.query.code;
+      if (!code) {
+        res.status(400).send('Missing authorization code.');
+        return reject(new Error('No code in callback'));
+      }
 
-    try {
-      const tokenRes = await axios.post('https://accounts.spotify.com/api/token',
-        new URLSearchParams({
-          grant_type: 'authorization_code',
-          code,
-          redirect_uri: REDIRECT_URI,
-          client_id: CLIENT_ID,
-          code_verifier: verifier
-        }).toString(),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-      );
+      try {
+        const tokenRes = await axios.post('https://accounts.spotify.com/api/token',
+          new URLSearchParams({
+            grant_type: 'authorization_code',
+            code,
+            redirect_uri: REDIRECT_URI,
+            client_id: CLIENT_ID,
+            code_verifier: verifier
+          }).toString(),
+          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
 
-      const { access_token, refresh_token, expires_in } = tokenRes.data;
+        const { access_token, refresh_token } = tokenRes.data;
 
-      tokens.access = access_token;
-      tokens.refresh = refresh_token;
+        tokens.access = access_token;
+        tokens.refresh = refresh_token;
+        saveTokensToFile(tokens);
 
-      saveTokensToFile(tokens);
+        console.log(chalk.green('\n✅ Logged in successfully!'));
+        res.send('✅ Login complete! You may close this window.');
 
-      console.log('\n✅ Logged in successfully!');
+        // Gracefully close server and return control to CLI
+        setTimeout(() => {
+          server.close(() => {
+            resolve();  // 👈 CLI continues here
+          });
+        }, 1000);
 
-      res.send('✅ Login complete! You may close this window.');
-
-      setTimeout(() => {
-        process.exit(0);
-      }, 1000);
-
-    } catch (err) {
-      console.error('Token exchange failed:', err.response?.data || err.message);
-      res.status(500).send('Failed to retrieve tokens.');
-    }
-  });
-
-  app.listen(3000, () => {
-    console.log('Waiting on http://localhost:3000...');
+      } catch (err) {
+        res.status(500).send('❌ Token exchange failed.');
+        reject(err);
+      }
+    });
   });
 }
 
@@ -137,7 +145,6 @@ async function handleLoginCommand() {
 async function handleUserTopSongs(limit, time_range) {
   const tokens = loadTokensFromFile();
   const access = tokens.access;
-  console.log(access);
 
   let time;
   if (time_range === "short") {
@@ -147,7 +154,7 @@ async function handleUserTopSongs(limit, time_range) {
   } else if (time_range === "long") {
     time = "long_term";
   } else {
-    console.log("Invalid time input! Use short, medium, or long.");
+    console.log(chalk.red("Invalid time input! Use short, medium, or long."));
     return;
   }
 
@@ -161,10 +168,11 @@ async function handleUserTopSongs(limit, time_range) {
       }
     );
 
-    console.log("🎵 Top Tracks:");
+    console.log(chalk.underline("🎵 Top Tracks:"));
     response.data.items.forEach((track, index) => {
-      console.log(`${index + 1}. ${track.name} — ${track.artists.map(a => a.name).join(", ")}`);
+      console.log(chalk.bold(`${index + 1}. ${track.name} — ${track.artists.map(a => a.name).join(", ")}`));
     });
+    console.log("\n");
 
   } catch (err) {
     console.error("Error fetching top tracks:", err.response?.data || err.message);
@@ -172,32 +180,112 @@ async function handleUserTopSongs(limit, time_range) {
 }
 
 // ==============================
+// USER'S TOP ARTIST
+// ==============================
+
+async function handleUserTopArtists(limit, time_range) {
+  const tokens = loadTokensFromFile();
+  const access = tokens.access;
+  let time;
+  if (time_range === "short") {
+    time = "short_term";
+  } else if (time_range === "medium") {
+    time = "medium_term";
+  } else if (time_range === "long") {
+    time = "long_term";
+  } else {
+    console.log(chalk.red("Invalid time input! Use short, medium, or long."));
+    return;
+  }
+}
+
+
+
+// ==============================
 // YARGS CLI SETUP
 // ==============================
-yargs(hideBin(process.argv))
-  .command('login', 'Authenticate with Spotify via PKCE', {}, handleLoginCommand)
-  .command(
-    'top-tracks',
-    'View your top Spotify tracks',
-    yargs => {
-      return yargs
-        .option('limit', {
-          alias: 'l',
+// yargs(hideBin(process.argv))
+//   .command('login', 'Authenticate with Spotify via PKCE', {}, handleLoginCommand)
+//   .command(
+//     'top-tracks',
+//     'View your top Spotify tracks',
+//     yargs => {
+//       return yargs
+//         .option('limit', {
+//           alias: 'l',
+//           type: 'number',
+//           default: 10,
+//           describe: 'Number of tracks to show (1–50)'
+//         })
+//         .option('range', {
+//           alias: 'r',
+//           type: 'string',
+//           choices: ['short', 'medium', 'long'],
+//           default: 'medium',
+//           describe: 'Time range: short (4 weeks), medium (6 months), or long (years)'
+//         });
+//     },
+//     argv => handleUserTopSongs(argv.limit, argv.range)
+//   )
+//   .strict()
+//   .help()
+//   .argv;
+
+
+async function SpotifyCliLoop() {
+  while (true) {
+    const { action } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'action',
+        message: '🎧 What would you like to do?',
+        choices: [
+          { name: 'View Top Tracks', value: 'top-tracks' },
+          { name: 'Login to Spotify', value: 'login' },
+          { name: 'Exit', value: 'exit' }
+        ]
+      }
+    ]);
+
+    if (action === 'exit') {
+      const thankYouMessage = chalk.green('Thank you for using Spotify CLI Tool');
+      const boxed = boxen(thankYouMessage, {
+        padding: 1,
+        margin: 1,
+        borderStyle: 'round',
+        borderColor: 'magenta',
+        align: 'center'
+      });
+      console.log(boxed);
+      process.exit(0);
+    }
+
+    if (action === 'login') {
+      await handleLoginCommand();
+    }
+
+    if (action === 'top-tracks') {
+      const { limit, range } = await inquirer.prompt([
+        {
           type: 'number',
-          default: 10,
-          describe: 'Number of tracks to show (1–50)'
-        })
-        .option('range', {
-          alias: 'r',
-          type: 'string',
-          choices: ['short', 'medium', 'long'],
-          default: 'medium',
-          describe: 'Time range: short (4 weeks), medium (6 months), or long (years)'
-        });
-    },
-    argv => handleUserTopSongs(argv.limit, argv.range)
-  )
-  .demandCommand(1, 'Please provide a valid command')
-  .strict()
-  .help()
-  .argv;
+          name: 'limit',
+          message: 'How many tracks?',
+          default: 10
+        },
+        {
+          type: 'list',
+          name: 'range',
+          message: 'Time range?',
+          choices: [
+            { name: 'Short (4 weeks)', value: 'short' },
+            { name: 'Medium (6 months)', value: 'medium' },
+            { name: 'Long (years)', value: 'long' }
+          ]
+        }
+      ]);
+      await handleUserTopSongs(limit, range);
+    }
+  }
+}
+
+SpotifyCliLoop();
