@@ -12,6 +12,9 @@ import os from 'os';
 import chalk from "chalk";
 import inquirer from "inquirer";
 import boxen from "boxen";
+import figlet from "figlet";
+import gradient from 'gradient-string';
+import stringWidth from 'string-width';
 
 // ==============================
 // CONFIGURATION
@@ -66,8 +69,58 @@ function loadTokensFromFile() {
 // ==============================
 //  WELCOME PAGE COMMAND
 // ==============================
-async function handleWelcomePage() {
+export function showWelcomeBanner() {
+  const asciiArt = `
+   ███████╗██████╗  ██████╗ ████████╗██╗███████╗██╗   ██╗
+   ██╔════╝██╔══██╗██╔═══██╗╚══██╔══╝██║██╔════╝╚██╗ ██╔╝
+   ███████╗██████╔╝██║   ██║   ██║   ██║█████╗   ╚████╔╝ 
+   ╚════██║██╔═══╝ ██║   ██║   ██║   ██║██╔══╝    ╚██╔╝  
+   ███████║██║     ╚██████╔╝   ██║   ██║██║        ██║   
+   ╚══════╝╚═╝      ╚═════╝    ╚═╝   ╚═╝╚═╝        ╚═╝   
+                                                          
+        ██████╗██╗     ██╗    ████████╗ ██████╗  ██████╗ ██╗     
+       ██╔════╝██║     ██║    ╚══██╔══╝██╔═══██╗██╔═══██╗██║     
+       ██║     ██║     ██║       ██║   ██║   ██║██║   ██║██║     
+       ██║     ██║     ██║       ██║   ██║   ██║██║   ██║██║     
+       ╚██████╗███████╗██║       ██║   ╚██████╔╝╚██████╔╝███████╗
+        ╚═════╝╚══════╝╚═╝       ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝`;
 
+  const coloredArt = gradient('green', 'cyan')(asciiArt);
+  const artLines = asciiArt.trim().split('\n');
+  const artWidth = Math.max(...artLines.map(line => line.length));
+  const subtitleText = 'Terminal-powered music control';
+  const subtitlePadding = Math.max(0, Math.floor((artWidth - subtitleText.length) / 2));
+  const subtitle = ' '.repeat(subtitlePadding) + chalk.greenBright.bold(subtitleText);
+  
+  const instructionLines = [
+    '-  Use arrow keys to navigate',
+    '-  Press Enter to select', 
+    '-  Run "Login" to link your account'
+  ];
+  
+  const centeredInstructions = instructionLines.map(line => {
+    const padding = Math.max(0, Math.floor((artWidth - line.length) / 2));
+    return ' '.repeat(padding) + chalk.gray(line);
+  }).join('\n');
+
+  const content = [
+    coloredArt,
+    '',
+    subtitle,
+    '',
+    centeredInstructions
+  ].join('\n');
+
+  const banner = boxen(content, {
+    padding: 1,
+    margin: 1,
+    borderStyle: 'round',
+    borderColor: 'green',
+    backgroundColor: '#0d0d0d'
+  });
+
+  console.clear();
+  console.log(banner);
 }
 
 // ==============================
@@ -131,7 +184,7 @@ async function handleLoginCommand() {
         }, 1000);
 
       } catch (err) {
-        res.status(500).send('❌ Token exchange failed.');
+        res.status(500).send(chalk.error('Token exchange failed.'));
         reject(err);
       }
     });
@@ -233,6 +286,7 @@ async function handleUserTopArtists(limit, time_range) {
 
 
 async function SpotifyCliLoop() {
+  showWelcomeBanner();
   while (true) {
     const { action } = await inquirer.prompt([
       {
