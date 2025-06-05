@@ -176,15 +176,15 @@ async function handleLoginCommand() {
         console.log(chalk.green('\n✅ Logged in successfully!'));
         res.send('✅ Login complete! You may close this window.');
 
-        // Gracefully close server and return control to CLI
+
         setTimeout(() => {
           server.close(() => {
-            resolve();  // 👈 CLI continues here
+            resolve();
           });
         }, 1000);
 
       } catch (err) {
-        res.status(500).send(chalk.error('Token exchange failed.'));
+        res.status(500).send(chalk.red('Token exchange failed.'));
         reject(err);
       }
     });
