@@ -239,6 +239,7 @@ async function handleUserTopSongs(limit, time_range) {
 async function handleUserTopArtists(limit, time_range) {
   const tokens = loadTokensFromFile();
   const access = tokens.access;
+
   let time;
   if (time_range === "short") {
     time = "short_term";
@@ -250,7 +251,27 @@ async function handleUserTopArtists(limit, time_range) {
     console.log(chalk.red("Invalid time input! Use short, medium, or long."));
     return;
   }
+
+  try {
+    const response = await axios.get(
+      `https://api.spotify.com/v1/me/top/artists?time_range=${time}&limit=${limit}`,
+      {
+        headers: {
+          Authorization: `Bearer ${access}`
+        }
+      }
+    );
+
+    console.log(chalk.underline("🎤 Top Artists:"));
+    response.data.items.forEach((artist, index) => {
+      console.log(chalk.bold(`${index + 1}. ${artist.name}`));
+    });
+    console.log("\n");
+  } catch (err) {
+    console.error("Error fetching top artists:", err.response?.data || err.message);
+  }
 }
+
 
 
 
@@ -295,6 +316,7 @@ async function SpotifyCliLoop() {
         message: '🎧 What would you like to do?',
         choices: [
           { name: 'View Top Tracks', value: 'top-tracks' },
+          { name: 'View Top Artists', value: 'top-artists'},
           { name: 'Login to Spotify', value: 'login' },
           { name: 'Exit', value: 'exit' }
         ]
@@ -338,6 +360,28 @@ async function SpotifyCliLoop() {
         }
       ]);
       await handleUserTopSongs(limit, range);
+    }
+
+    if (action === 'top-artists') {
+      const {limit, range} = await inquirer.prompt([
+        {
+          type: 'number',
+          name: 'limit',
+          message: 'How many artists?',
+          default: 10
+        },
+        {
+          type: 'list',
+          name: 'range',
+          message: 'Time range?',
+          choices: [
+            { name: 'Short (4 weeks)', value: 'short' },
+            { name: 'Medium (6 months)', value: 'medium' },
+            { name: 'Long (years)', value: 'long' }
+          ]
+        }
+      ]);
+      await handleUserTopArtists(limit, range);
     }
   }
 }
